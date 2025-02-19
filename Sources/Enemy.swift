@@ -3,21 +3,24 @@ import SpriteKit
 
 class Enemy: SKSpriteNode {
     var associatedProblem: MathProblem?
+    var enemyWidth = 100
+    var enemyHeight = 80
 
     static func spawn(at position: CGPoint, problem: MathProblem) -> Enemy {
-        let enemyTexture = SKTexture(imageNamed: "Boar-Run-1") // Load texture
-        let enemy = Enemy(texture: enemyTexture) // Initialize with texture
+        let enemyTexture = SKTexture(imageNamed: "Boar-Run-1")
+        let enemy = Enemy(texture: enemyTexture) // Set the initial size
+        enemy.size = CGSize(width: enemy.enemyWidth, height: enemy.enemyHeight)
         enemy.position = position
         enemy.setupPhysics()
         enemy.associatedProblem = problem
         enemy.name = "enemy"
-        enemy.runAnimation() //call the animation
+        enemy.runAnimation()
         return enemy
     }
 
     private func setupPhysics() {
-         // Adjust size to match a single frame!
-        physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: 40, height: 80)) //or use texture size: physicsBody = SKPhysicsBody(texture: texture!, size: texture!.size())
+         // Match the physics body to the visual size.
+        physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: enemyWidth, height: enemyHeight))
         physicsBody?.categoryBitMask = PhysicsCategory.enemy
         physicsBody?.contactTestBitMask = PhysicsCategory.player
         physicsBody?.affectedByGravity = false
@@ -32,11 +35,11 @@ class Enemy: SKSpriteNode {
     func runAnimation() {
         // Example animation (assuming 2 run frames)
         var runTextures: [SKTexture] = []
-        for i in 1...2 {
+        for i in 1...6 {
             runTextures.append(SKTexture(imageNamed: "Boar-Run-\(i)")) //e.g., enemy1, enemy2.png
         }
 
-        let runAnimation = SKAction.animate(with: runTextures, timePerFrame: 0.3)
+        let runAnimation = SKAction.animate(with: runTextures, timePerFrame: 0.1)
         run(SKAction.repeatForever(runAnimation))
     }
 }

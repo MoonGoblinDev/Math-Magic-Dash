@@ -3,29 +3,31 @@ import SpriteKit
 
 class Player: SKSpriteNode {
     private(set) var health = 100
+    var playerWidth = 80
+    var playerHeight = 100
 
     static func createPlayer() -> Player {
-        let playerTexture = SKTexture(imageNamed: "Player-Run-1") // Load the texture
-        let player = Player(texture: playerTexture) // Use the texture
+        let playerTexture = SKTexture(imageNamed: "player-run-1") // Load the texture
+        let player = Player(texture: playerTexture)  // Set initial size here
+        player.size = CGSize(width: player.playerWidth, height: player.playerHeight)
         player.setupPhysics()
-        player.startRunningAnimation()  //Start is in create player so it runs  right away
+        player.startRunningAnimation()
         return player
     }
 
     private func setupPhysics() {
-        // Adjust size to match *one frame* of your animation. Very important!
-        physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: 50, height: 50))  //Or use texture size: physicsBody = SKPhysicsBody(texture: texture!, size: texture!.size())
+        // Match the physics body to the visual size.
+        physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: playerWidth, height: playerHeight))
         physicsBody?.allowsRotation = false
         physicsBody?.categoryBitMask = PhysicsCategory.player
         physicsBody?.contactTestBitMask = PhysicsCategory.enemy
         physicsBody?.collisionBitMask = PhysicsCategory.ground
     }
-
     func startRunningAnimation() {
         // Example animation (assuming 4 run frames)
         var runTextures: [SKTexture] = []
         for i in 1...8 {
-            runTextures.append(SKTexture(imageNamed: "player-run-\(i)")) 
+            runTextures.append(SKTexture(imageNamed: "player-run-\(i)"))
         }
 
         let runAnimation = SKAction.animate(with: runTextures, timePerFrame: 0.05)
