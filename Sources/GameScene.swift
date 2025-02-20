@@ -3,33 +3,40 @@ import SpriteKit
 import SwiftUI
 
 class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
+    // MARK: - Properties
     private var player: Player!
-    private var gameUI: GameUI! // Health and Score
+    private var gameUI: GameUI!
     private var currentProblem: MathProblem?
-    private var score = 0 { //for score in swiftui purpose
-         didSet {
-             updateScoreView()
-         }
-     }
+    private var score = 0 {
+        didSet {
+            updateScoreView()
+            updateSpawnParameters()  //Update wave on score
+        }
+    }
     weak var gameDelegate: GameSceneDelegate?
     private var background: ScrollingBackground!
     private var lastUpdateTime: TimeInterval = 0
     private var ground: SKSpriteNode!
-
-    // Add a container for our SwiftUI view
     private var questionViewHostingController: UIHostingController<AnyView>?
-    // Add a hosting controller for the ScoreView
     private var scoreViewHostingController: UIHostingController<ScoreView>?
-
     private let nearDistanceThreshold: CGFloat = 150.0
-    private let farDistanceThreshold: CGFloat = 600.0 // Just to define
+    private let farDistanceThreshold: CGFloat = 600.0
 
+    // Wave-related properties
+    private var currentWave = 1
+    private var enemiesPerWave = 1 // Start with 1 enemy per wave
+    private var waveDelay: TimeInterval = 3.0 // Delay between waves
+    private var problemQueue: [MathProblem] = [] // Queue WITHIN a wave
+    private let enemySpawnDelay: TimeInterval = 0.5
+
+    // MARK: - Lifecycle
     override func didMove(to view: SKView) {
         setupPhysicsWorld()
         setupGame()
-        startGameLoop()
+        startWave() // Start the first wave directly
     }
 
+    // MARK: - Setup (No Changes Here, but included for completeness)
     private func setupPhysicsWorld() {
         physicsWorld.gravity = CGVector(dx: 0, dy: -9.8)
         physicsWorld.contactDelegate = self
@@ -47,133 +54,127 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
 
         gameUI = GameUI(in: self)
         gameUI.addToScene(self)
-        // Create hearts UI
         gameUI.createHearts(in: self)
         setupScoreView()
-
     }
 
     private func setupGame() {
         let backgroundTexture = SKTexture(imageNamed: "Background")
         background = ScrollingBackground(texture: backgroundTexture, gameWidth: frame.width, movementMultiplier: 0.3, yPosition: frame.midY, backgroundHeight: frame.height)
         addChild(background)
-        // Don't generate a problem initially.  Wait for the enemy.
-    }
-   private func startGameLoop() {
-        run(SKAction.repeatForever(
-            SKAction.sequence([
-                SKAction.run { [weak self] in
-                    guard let self = self else { return }
-                    // Generate and show problem *with* the enemy.
-                    self.generateNewProblem()
-                    if let problem = self.currentProblem {
-                        self.spawnEnemy(problem: problem)
-                    }
-                },
-                SKAction.wait(forDuration: 5.0)
-            ])
-        ))
     }
 
-    private func spawnEnemy(problem: MathProblem) {
-        let enemy = Enemy.spawn(at: CGPoint(x: frame.width + 50,
-                                            y: ground.position.y + ground.size.height/2 + 40), problem: problem)
-        addChild(enemy)
-        enemy.startMoving()
+    // MARK: - Wave Management
+    private func startWave() {
+        // 1. Generate problems for the wave
+        problemQueue = []
+        for _ in 0..<enemiesPerWave {
+            problemQueue.append(MathProblem.random(forScore: score))
+        }
+
+        // 2. Start spawning enemies for this wave
+        spawnNextEnemy()
     }
 
-    private func generateNewProblem() {
-        currentProblem = MathProblem.random()
-        if let problem = currentProblem {
-            // Update SwiftUI View
+    private func spawnNextEnemy() {
+        if !problemQueue.isEmpty {
+            let problem = problemQueue.removeFirst()
+            currentProblem = problem
             updateQuestionView(with: problem)
+
+            let enemy = Enemy.spawn(at: CGPoint(x: frame.width + 50, y: ground.position.y + ground.size.height/2 + 40), problem: problem)
+            addChild(enemy)
+            enemy.startMoving()
+
+            // Schedule the next enemy (if any) with a delay
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: enemySpawnDelay),
+                SKAction.run { [weak self] in
+                    self?.spawnNextEnemy()
+                }
+            ]))
+        } else { // No more, that's all
+             // Wave is complete, all problems answered
+             run(SKAction.sequence([
+                  SKAction.wait(forDuration: waveDelay),
+                  SKAction.run { [weak self] in
+                      guard let self = self else { return }
+                      self.currentWave += 1
+                      self.startWave() // Start the next wave
+                   }
+              ]))
         }
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        // No longer handle answer touches here.  SwiftUI handles it.
-    }
-
+    // MARK: - Answer Handling
     private func handleAnswer(index: Int, correct: Bool) {
         guard let problem = currentProblem else { return }
 
         if correct {
             score += 10
 
-            // Find the enemy associated with the current problem.
-            var currentEnemy: Enemy?
+            var currentEnemies: [Enemy] = []
             enumerateChildNodes(withName: "enemy") { [weak self] node, _ in
                 guard let self = self else { return }
-                if let enemy = node as? Enemy, enemy.associatedProblem?.question == problem.question {
-                    currentEnemy = enemy
+                if let enemy = node as? Enemy {
+                    currentEnemies.append(enemy)
                 }
             }
-            guard let enemy = currentEnemy else {
-                hideQuestionView()
-                currentProblem = nil // VERY IMPORTANT
+
+            guard let enemy = currentEnemies.first(where: { $0.associatedProblem?.question == problem.question }) else {
                 return
             }
 
-            // Calculate the distance between the player and the enemy.
             let distance = player.position.distance(to: enemy.position)
 
             if distance <= nearDistanceThreshold {
-                // Slash attack
-                player.slashAnimation(enemy: enemy) // <--- Pass the enemy to the slashAnimation
-                //enemy.removeFromParent() // Remove enemy immediately on slash, no need this anymore
+                player.slashAnimation(enemy: enemy)
             } else {
-                // Fireball attack, only if distance is within far range to preven fireball flying forever
-                if(distance <= farDistanceThreshold){
+                if distance <= farDistanceThreshold {
                     let fireball = Fireball.spawn(at: player.position, target: enemy.position)
                     addChild(fireball)
-                }else{
-                    enemy.removeFromParent() // Remove enemy to prevent forever there
+                } else {
+                    enemy.removeFromParent()
                 }
-
             }
-            // HIDE THE VIEW ON CORRECT ANSWER!
-            hideQuestionView()
-            currentProblem = nil // VERY IMPORTANT:  Make sure this is cleared.
-        } else { //Incorrect
-            hideQuestionView()
-            currentProblem = nil // Reset
-        }
 
-    }
-
-    func didBegin(_ contact: SKPhysicsContact) {
-        let collision = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
-
-        if collision == PhysicsCategory.player | PhysicsCategory.enemy {
-            if let enemy = (contact.bodyA.node as? Enemy) ?? (contact.bodyB.node as? Enemy) {
-                player.takeDamage(1) // Player now loses 1 heart.
-                gameUI.updateHealth(player.health) //Update health UI
-                enemy.removeFromParent()
-                //If hit, remove question
+            // Check if there are more problems in the QUEUE.
+            if !problemQueue.isEmpty {
+                currentProblem = problemQueue.removeFirst() // Get from the QUEUE
+                updateQuestionView(with: currentProblem!)
+            } else {
+                 // IMPORTANT: Don't start a new wave *immediately*.
+                 // Wait until all enemies are gone.  `spawnNextEnemy` handles that.
                 hideQuestionView()
-                currentProblem = nil
-
-                if player.health <= 0 {
-                    handleGameOver()
-                }
+                currentProblem = nil // No current problem
             }
-        }else if collision == PhysicsCategory.fireball | PhysicsCategory.enemy {
-            if let fireball = contact.bodyA.node as? Fireball ?? contact.bodyB.node as? Fireball,
-               let enemy = contact.bodyA.node as? Enemy ?? contact.bodyB.node as? Enemy {
-                enemy.takeHit(from: fireball.position)
-                fireball.explode() // Call the explosion animation
-                //fireball.removeFromParent() No need remove it, because already handled inside explode
 
-            }
+        } else {
+            hideQuestionView()
+            currentProblem = nil
         }
     }
 
-    private func handleGameOver() {
-        isPaused = true
-        gameDelegate?.gameDidEnd(withScore: score)
+    // ... (Rest of the methods: didBegin, handleGameOver, update,
+    //      updateQuestionView, hideQuestionView, setupScoreView, updateScoreView) are the same
+
+    private func generateNewProblem(){
+        //No longer being used, problem generated per wave
+    }
+    // MARK: - Difficulty & Wave Progression
+    private func updateSpawnParameters() {
+        // Adjust enemiesPerWave and waveDelay based on score
+          if score >= 60 && score < 100 {
+             enemiesPerWave = 1
+         } else if score >= 100 && score < 200 {
+            enemiesPerWave = 1
+         } else if score >= 200 {
+           enemiesPerWave = 1
+          }
     }
 
-    override func update(_ currentTime: TimeInterval) {
+    // MARK: - Update
+      override func update(_ currentTime: TimeInterval) {
         if lastUpdateTime > 0 {
             let deltaTime = currentTime - lastUpdateTime
             background.update(deltaTime: deltaTime)
@@ -181,47 +182,74 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         lastUpdateTime = currentTime
     }
 
-    // MARK: - SwiftUI Integration
+     // MARK: - Collision Handling
 
+    func didBegin(_ contact: SKPhysicsContact) {
+        let collision = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
+
+        if collision == PhysicsCategory.player | PhysicsCategory.enemy {
+             if let enemy = (contact.bodyA.node as? Enemy) ?? (contact.bodyB.node as? Enemy) {
+                player.takeDamage(1)
+                gameUI.updateHealth(player.health)
+                enemy.removeFromParent() // Remove the enemy
+                hideQuestionView()
+                currentProblem = nil // Clear the current problem (IMPORTANT)
+
+                if player.health <= 0 {
+                    handleGameOver()
+                }
+           }
+        } else if collision == PhysicsCategory.fireball | PhysicsCategory.enemy {
+            if let fireball = contact.bodyA.node as? Fireball ?? contact.bodyB.node as? Fireball,
+               let enemy = contact.bodyA.node as? Enemy ?? contact.bodyB.node as? Enemy
+            {
+                enemy.takeHit(from: fireball.position)
+                fireball.explode()
+            }
+        }
+    }
+
+    // MARK: - Game Over
+
+    private func handleGameOver() {
+        isPaused = true
+        gameDelegate?.gameDidEnd(withScore: score)
+    }
+
+     // MARK: - SwiftUI Integration (Question)
     private func updateQuestionView(with problem: MathProblem) {
-        // Create or update the SwiftUI view.
-
         let questionView = QuestionView(problem: problem) { [weak self] selectedIndex in
             guard let self = self, let problem = self.currentProblem else { return }
             let isCorrect = problem.options[selectedIndex] == problem.correctAnswer
-            self.handleAnswer(index: selectedIndex, correct: isCorrect) // Call handleAnswer
-
+            self.handleAnswer(index: selectedIndex, correct: isCorrect)
         }
 
         if let hostingController = questionViewHostingController {
-            // Update the existing view.
             hostingController.rootView = AnyView(questionView)
         } else {
-            // Create a new hosting controller and add it to the scene.
             let hostingController = UIHostingController(rootView: AnyView(questionView))
             questionViewHostingController = hostingController
 
-            // Use GameUIViewRepresentable to embed it in the SKView
             let uiView = hostingController.view!
-            uiView.backgroundColor = .clear // Make the UIHostingController's view transparent
+            uiView.backgroundColor = .clear
             uiView.translatesAutoresizingMaskIntoConstraints = false
             view?.addSubview(uiView)
 
-            // Constraints to position the SwiftUI view (bottom of screen)
-              NSLayoutConstraint.activate([
+            NSLayoutConstraint.activate([
                 uiView.leadingAnchor.constraint(equalTo: view!.leadingAnchor),
                 uiView.trailingAnchor.constraint(equalTo: view!.trailingAnchor),
-                uiView.bottomAnchor.constraint(equalTo: view!.safeAreaLayoutGuide.bottomAnchor, constant: -20), // Place it at the bottom
-                uiView.heightAnchor.constraint(equalToConstant: 300) // Or any suitable height
-              ])
-
+                uiView.bottomAnchor.constraint(equalTo: view!.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+                uiView.heightAnchor.constraint(equalToConstant: 300)
+            ])
         }
     }
+
     private func hideQuestionView() {
-        questionViewHostingController?.rootView = AnyView(EmptyView()) // Set to EmptyView
+        questionViewHostingController?.rootView = AnyView(EmptyView())
     }
 
-    // MARK: - Score View Integration
+    // MARK: - SwiftUI Integration (Score)
+
     private func setupScoreView() {
         let scoreView = ScoreView(score: score)
         let hostingController = UIHostingController(rootView: scoreView)
@@ -232,7 +260,6 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         uiView.translatesAutoresizingMaskIntoConstraints = false
         view?.addSubview(uiView)
 
-        // Let the view size itself based on content
         hostingController.view.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         hostingController.view.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
@@ -245,10 +272,11 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
 
     private func updateScoreView() {
         let scoreView = ScoreView(score: score)
-        scoreViewHostingController?.rootView = scoreView // Update the existing view
+        scoreViewHostingController?.rootView = scoreView
     }
 }
-// Extension for calculating distance between CGPoints
+
+// MARK: - CGPoint Extension
 extension CGPoint {
     func distance(to point: CGPoint) -> CGFloat {
         return hypot(self.x - point.x, self.y - point.y)
