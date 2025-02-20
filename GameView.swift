@@ -1,3 +1,4 @@
+// Sources/GameView.swift (Modified)
 import SwiftUI
 import SpriteKit
 
@@ -5,7 +6,7 @@ struct GameView: View {
     @State private var isGameStarted = false
     @State private var isGameOver = false
     @State private var currentScore = 0
-    
+
     var body: some View {
         ZStack {
             if isGameStarted {
@@ -14,10 +15,12 @@ struct GameView: View {
                     currentScore: $currentScore
                 )
                 .ignoresSafeArea()
-                
+
                 if isGameOver {
                     GameOverView(score: currentScore) {
-                        restartGame()
+                        // Simply set isGameStarted to false.
+                        isGameStarted = false
+                        isGameOver = false // Reset isGameOver as well
                     }
                 }
             } else {
@@ -25,14 +28,5 @@ struct GameView: View {
             }
         }
     }
-    
-    private func restartGame() {
-        isGameOver = false
-        currentScore = 0
-        // This will trigger a new game scene creation
-        isGameStarted = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            isGameStarted = true
-        }
-    }
+    //Remove restart function
 }
