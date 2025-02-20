@@ -1,5 +1,4 @@
-// Sources/GameScene.swift (Modified)
-
+// Sources/GameScene.swift (Corrected)
 import SpriteKit
 import SwiftUI
 
@@ -7,7 +6,11 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
     private var player: Player!
     private var gameUI: GameUI! // Health and Score
     private var currentProblem: MathProblem?
-    private var score = 0
+    private var score = 0 { //for score in swiftui purpose
+         didSet {
+             updateScoreView()
+         }
+     }
     weak var gameDelegate: GameSceneDelegate?
     private var background: ScrollingBackground!
     private var lastUpdateTime: TimeInterval = 0
@@ -15,6 +18,8 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
 
     // Add a container for our SwiftUI view
     private var questionViewHostingController: UIHostingController<AnyView>?
+    // Add a hosting controller for the ScoreView
+    private var scoreViewHostingController: UIHostingController<ScoreView>?
 
     override func didMove(to view: SKView) {
         setupPhysicsWorld()
@@ -37,10 +42,11 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         player.position = CGPoint(x: frame.width * 0.2, y: ground.position.y + ground.size.height / 2 + player.size.height / 2)
         addChild(player)
 
-        gameUI = GameUI(in: self)  // Keep GameUI for health/score
+        gameUI = GameUI(in: self)
         gameUI.addToScene(self)
         // Create hearts UI
         gameUI.createHearts(in: self)
+        setupScoreView()
 
     }
 
@@ -89,8 +95,8 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         guard let problem = currentProblem else { return }
 
         if correct {
-            score += 10
-            gameUI.updateScore(score)  // Update score via GameUI
+           // gameUI.updateScore(score) //REmoved, using swiftui score
+            score += 10 // Update score
 
             enumerateChildNodes(withName: "enemy") { [weak self] node, _ in
                 guard let self = self else {return}
@@ -179,5 +185,32 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
     }
     private func hideQuestionView() {
         questionViewHostingController?.rootView = AnyView(EmptyView()) // Set to EmptyView
+    }
+
+    // MARK: - Score View Integration
+    private func setupScoreView() {
+        let scoreView = ScoreView(score: score)
+        let hostingController = UIHostingController(rootView: scoreView)
+        scoreViewHostingController = hostingController
+
+        let uiView = hostingController.view!
+        uiView.backgroundColor = .clear
+        uiView.translatesAutoresizingMaskIntoConstraints = false
+        view?.addSubview(uiView)
+
+        // Let the view size itself based on content
+        hostingController.view.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        hostingController.view.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+
+        NSLayoutConstraint.activate([
+            uiView.topAnchor.constraint(equalTo: view!.safeAreaLayoutGuide.topAnchor, constant: 20),
+            uiView.trailingAnchor.constraint(equalTo: view!.trailingAnchor, constant: -20),
+            uiView.heightAnchor.constraint(equalToConstant: 50)
+        ])
+    }
+
+    private func updateScoreView() {
+        let scoreView = ScoreView(score: score)
+        scoreViewHostingController?.rootView = scoreView // Update the existing view
     }
 }
