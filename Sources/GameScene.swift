@@ -1,4 +1,4 @@
-// Sources/GameScene.swift (Corrected)
+// Sources/GameScene.swift
 import SpriteKit
 import SwiftUI
 
@@ -20,6 +20,9 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
     private var questionViewHostingController: UIHostingController<AnyView>?
     // Add a hosting controller for the ScoreView
     private var scoreViewHostingController: UIHostingController<ScoreView>?
+
+    private let nearDistanceThreshold: CGFloat = 150.0
+    private let farDistanceThreshold: CGFloat = 600.0 // Just to define
 
     override func didMove(to view: SKView) {
         setupPhysicsWorld()
@@ -95,24 +98,47 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         guard let problem = currentProblem else { return }
 
         if correct {
-           // gameUI.updateScore(score) //REmoved, using swiftui score
-            score += 10 // Update score
+            score += 10
 
+            // Find the enemy associated with the current problem.
+            var currentEnemy: Enemy?
             enumerateChildNodes(withName: "enemy") { [weak self] node, _ in
-                guard let self = self else {return}
+                guard let self = self else { return }
                 if let enemy = node as? Enemy, enemy.associatedProblem?.question == problem.question {
-                    enemy.removeFromParent()
+                    currentEnemy = enemy
                 }
+            }
+            guard let enemy = currentEnemy else {
+                hideQuestionView()
+                currentProblem = nil // VERY IMPORTANT
+                return
+            }
+
+            // Calculate the distance between the player and the enemy.
+            let distance = player.position.distance(to: enemy.position)
+
+            if distance <= nearDistanceThreshold {
+                // Slash attack
+                player.slashAnimation(enemy: enemy) // <--- Pass the enemy to the slashAnimation
+                //enemy.removeFromParent() // Remove enemy immediately on slash, no need this anymore
+            } else {
+                // Fireball attack, only if distance is within far range to preven fireball flying forever
+                if(distance <= farDistanceThreshold){
+                    let fireball = Fireball.spawn(at: player.position, target: enemy.position)
+                    addChild(fireball)
+                }else{
+                    enemy.removeFromParent() // Remove enemy to prevent forever there
+                }
+
             }
             // HIDE THE VIEW ON CORRECT ANSWER!
             hideQuestionView()
-        } else {
-            // If the answer is wrong, hide the QuestionView.
+            currentProblem = nil // VERY IMPORTANT:  Make sure this is cleared.
+        } else { //Incorrect
             hideQuestionView()
+            currentProblem = nil // Reset
         }
 
-        // Crucial: Clear the current problem.
-        currentProblem = nil
     }
 
     func didBegin(_ contact: SKPhysicsContact) {
@@ -130,6 +156,14 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
                 if player.health <= 0 {
                     handleGameOver()
                 }
+            }
+        }else if collision == PhysicsCategory.fireball | PhysicsCategory.enemy {
+            if let fireball = contact.bodyA.node as? Fireball ?? contact.bodyB.node as? Fireball,
+               let enemy = contact.bodyA.node as? Enemy ?? contact.bodyB.node as? Enemy {
+                enemy.takeHit(from: fireball.position)
+                fireball.explode() // Call the explosion animation
+                //fireball.removeFromParent() No need remove it, because already handled inside explode
+
             }
         }
     }
@@ -212,5 +246,11 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
     private func updateScoreView() {
         let scoreView = ScoreView(score: score)
         scoreViewHostingController?.rootView = scoreView // Update the existing view
+    }
+}
+// Extension for calculating distance between CGPoints
+extension CGPoint {
+    func distance(to point: CGPoint) -> CGFloat {
+        return hypot(self.x - point.x, self.y - point.y)
     }
 }
