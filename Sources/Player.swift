@@ -2,7 +2,7 @@
 import SpriteKit
 
 class Player: SKSpriteNode {
-    private(set) var health = 3  // Now represents the *number* of hearts.
+    var health = 3  // Now represents the *number* of hearts.
     var playerWidth = 80
     var playerHeight = 100
     var isImmune = false // Add this property

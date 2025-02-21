@@ -1,4 +1,4 @@
-// Sources/GameScene.swift (Modified)
+// Sources/GameScene.swift
 import SpriteKit
 import SwiftUI
 
@@ -7,6 +7,7 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
     private var gameUI: GameUI!
     private var problemManager: ProblemManager!
     private var enemySpawner: EnemySpawner!
+    private var itemSpawner: ItemSpawner! //Add this
     weak var gameDelegate: GameSceneDelegate?
     private var background: ScrollingBackground!
     private var lastUpdateTime: TimeInterval = 0
@@ -47,6 +48,7 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
         gameUI.addToScene(self)
         problemManager = ProblemManager(scene: self, gameUI: gameUI) // Pass gameUI to problem manager
         enemySpawner = EnemySpawner(scene: self)
+        itemSpawner = ItemSpawner(scene: self) //Add itemSpawner
 
         gameUI.createHearts(in: self)
         gameUI.setupScoreView()
@@ -61,6 +63,9 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
                      if let problem = self.problemManager.currentProblem {
                          self.enemySpawner.spawnEnemy(problem: problem, ground: self.ground)
                      }
+
+                     //Add ItemSpawn
+                     self.itemSpawner.spawnItem(ground: self.ground) //Add itemSpawner
                  },
                  SKAction.wait(forDuration: 5.0)
              ])
@@ -128,6 +133,16 @@ class GameScene: SKScene, @preconcurrency SKPhysicsContactDelegate {
                  enemy.takeHit(from: fireball.position)
                  fireball.explode()
              }
+         } else if collision == PhysicsCategory.player | PhysicsCategory.healthItem {
+            if let player = (contact.bodyA.node as? Player) ?? (contact.bodyB.node as? Player),
+               let healthItem = contact.bodyA.node as? HealthItem ?? contact.bodyB.node as? HealthItem{
+                healthItem.collected(by: player, gameUI: gameUI)
+            }
+         }else if collision == PhysicsCategory.player | PhysicsCategory.shieldItem {
+            if let player = (contact.bodyA.node as? Player) ?? (contact.bodyB.node as? Player),
+               let shieldItem = contact.bodyA.node as? ShieldItem ?? contact.bodyB.node as? ShieldItem{
+                shieldItem.collected(by: player)
+            }
          }
     }
 
