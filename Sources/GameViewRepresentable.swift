@@ -1,3 +1,4 @@
+//GameViewRepresentable.swift
 import SwiftUI
 import SpriteKit
 
@@ -33,7 +34,7 @@ struct GameViewRepresentable: UIViewRepresentable {
         }
         
         @MainActor func gameDidEnd(withScore score: Int) {
-            parent.currentScore = score
+            parent.currentScore = score //Pass score from GameUI
             parent.isGameOver = true
         }
     }

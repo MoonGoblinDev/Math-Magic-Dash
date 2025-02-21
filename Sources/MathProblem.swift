@@ -17,7 +17,7 @@ struct MathProblem {
             operations = ["+", "-", "×", "÷"]
             difficultyLevel = 2
         } else if score < 200 {
-            operations = ["+", "-"]
+            operations = ["+", "-", "×", "÷"]
             difficultyLevel = 3
         } else {
             operations = ["+", "-", "×", "÷"]
